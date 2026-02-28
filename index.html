@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>awake</title>
+<meta name="description" content="Keep your screen awake. No install, no tracking, just works.">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a0a;
+    --fg: #e0e0e0;
+    --dim: #505050;
+    --border: #252525;
+    --border-active: #e0e0e0;
+    --font: 'DM Sans', system-ui, sans-serif;
+  }
+
+  html, body {
+    height: 100%;
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    min-height: 100dvh;
+    text-align: center;
+  }
+
+  .container {
+    max-width: 400px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2.5rem;
+    animation: enter 0.5s ease-out;
+  }
+
+  @keyframes enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .toggle {
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    background: transparent;
+    color: var(--dim);
+    cursor: pointer;
+    font-family: var(--font);
+    font-size: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    transition: border-color 0.35s, color 0.35s;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+  }
+
+  .toggle:hover { border-color: var(--dim); }
+  .toggle.on { border-color: var(--border-active); color: var(--fg); }
+
+  .status {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    align-items: center;
+  }
+
+  .status-text {
+    font-size: 1.1rem;
+    font-weight: 300;
+    color: var(--dim);
+    transition: color 0.35s;
+    line-height: 1.5;
+  }
+
+  .status-text.on { color: var(--fg); }
+
+  .timer {
+    font-size: 0.95rem;
+    font-weight: 300;
+    color: var(--dim);
+    letter-spacing: 0.05em;
+    font-variant-numeric: tabular-nums;
+    min-height: 1.2em;
+  }
+
+  .badge {
+    display: none;
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--dim);
+    background: var(--border);
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    letter-spacing: 0.03em;
+  }
+
+  .badge.show { display: inline-block; }
+
+  .notice {
+    font-size: 0.88rem;
+    font-weight: 300;
+    color: var(--dim);
+    line-height: 1.7;
+    max-width: 300px;
+  }
+
+  .unsupported {
+    display: none;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.3rem;
+    font-size: 0.95rem;
+    color: var(--dim);
+    line-height: 1.6;
+    font-weight: 300;
+  }
+
+  .unsupported.show { display: block; }
+
+  footer {
+    position: fixed;
+    bottom: 1.2rem;
+    font-size: 0.78rem;
+    color: var(--dim);
+    letter-spacing: 0.03em;
+    font-weight: 300;
+  }
+
+  footer a {
+    color: var(--dim);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+    transition: color 0.2s, border-color 0.2s;
+  }
+
+  footer a:hover { color: var(--fg); border-color: var(--fg); }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <button class="toggle" id="toggle" aria-label="Toggle stay awake">
+    <span id="btnLabel">Start</span>
+  </button>
+
+  <div class="status">
+    <div class="status-text" id="statusText">Screen will sleep normally</div>
+    <div class="timer" id="timer"></div>
+    <span class="badge" id="badge">Paused — switch back to resume</span>
+  </div>
+
+  <p class="notice">Keep this tab in the foreground.<br>It will pause if you switch away and resume when you return.</p>
+
+  <div class="unsupported" id="unsupported">
+    Your browser doesn't support the Screen Wake Lock API. Try a recent version of Chrome, Edge, Safari, or Firefox.
+  </div>
+</div>
+
+<footer>
+  <a href="https://github.com/joetul/awake" target="_blank" rel="noopener">GitHub</a> · Uses the <a href="https://developer.mozilla.org/en-US/docs/Web/API/Screen_Wake_Lock_API" target="_blank" rel="noopener">Screen Wake Lock API</a>
+</footer>
+
+<script>
+  const toggleBtn = document.getElementById('toggle');
+  const btnLabel = document.getElementById('btnLabel');
+  const statusText = document.getElementById('statusText');
+  const timerEl = document.getElementById('timer');
+  const badge = document.getElementById('badge');
+  const unsupportedEl = document.getElementById('unsupported');
+
+  let wakeLock = null;
+  let isIntentOn = false;
+  let startTime = null;
+  let elapsed = 0;
+  let timerRAF = null;
+  const supported = 'wakeLock' in navigator;
+
+  if (!supported) {
+    unsupportedEl.classList.add('show');
+    toggleBtn.disabled = true;
+    toggleBtn.style.opacity = '0.25';
+    toggleBtn.style.cursor = 'not-allowed';
+  }
+
+  function formatDuration(ms) {
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    const pad = n => String(n).padStart(2, '0');
+    return h > 0 ? `${pad(h)}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
+  }
+
+  function tickTimer() {
+    if (!startTime) return;
+    timerEl.textContent = formatDuration(elapsed + (Date.now() - startTime));
+    timerRAF = requestAnimationFrame(tickTimer);
+  }
+
+  function resumeTimer() {
+    startTime = Date.now();
+    timerRAF = requestAnimationFrame(tickTimer);
+  }
+
+  function pauseTimer() {
+    if (startTime) elapsed += Date.now() - startTime;
+    startTime = null;
+    cancelAnimationFrame(timerRAF);
+  }
+
+  function resetTimer() {
+    pauseTimer();
+    elapsed = 0;
+    timerEl.textContent = '';
+  }
+
+  async function acquireLock() {
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function updateUI() {
+    const active = isIntentOn && wakeLock;
+    const paused = isIntentOn && !wakeLock;
+
+    toggleBtn.classList.toggle('on', isIntentOn);
+    btnLabel.textContent = isIntentOn ? 'Stop' : 'Start';
+
+    if (active) {
+      statusText.textContent = 'Your screen is staying awake';
+      statusText.classList.add('on');
+      badge.classList.remove('show');
+    } else if (paused) {
+      statusText.textContent = 'Paused — tab is in the background';
+      statusText.classList.remove('on');
+      badge.classList.add('show');
+    } else {
+      statusText.textContent = 'Screen will sleep normally';
+      statusText.classList.remove('on');
+      badge.classList.remove('show');
+    }
+  }
+
+  async function activate() {
+    isIntentOn = true;
+    const ok = await acquireLock();
+    if (ok) resumeTimer();
+    updateUI();
+  }
+
+  function deactivate() {
+    isIntentOn = false;
+    if (wakeLock) {
+      wakeLock.release();
+      wakeLock = null;
+    }
+    resetTimer();
+    updateUI();
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    if (!supported) return;
+    isIntentOn ? deactivate() : activate();
+  });
+
+  document.addEventListener('visibilitychange', async () => {
+    if (!isIntentOn) return;
+
+    if (document.visibilityState === 'hidden') {
+      pauseTimer();
+      updateUI();
+    } else {
+      const ok = await acquireLock();
+      if (ok) resumeTimer();
+      updateUI();
+    }
+  });
+</script>
+
+</body>
+</html>
