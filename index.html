@@ -47,6 +47,7 @@
     align-items: center;
     gap: 2.5rem;
     animation: enter 0.5s ease-out;
+    transition: transform 2s ease-in-out;
   }
 
   @keyframes enter {
@@ -142,6 +143,7 @@
     color: var(--dim);
     letter-spacing: 0.03em;
     font-weight: 300;
+    transition: opacity 1.5s ease, transform 2s ease-in-out;
   }
 
   footer a {
@@ -152,6 +154,12 @@
   }
 
   footer a:hover { color: var(--fg); border-color: var(--fg); }
+
+  .notice {
+    transition: opacity 1.5s ease;
+  }
+
+  .fade-out { opacity: 0 !important; }
 </style>
 </head>
 <body>
@@ -269,6 +277,7 @@
     const ok = await acquireLock();
     if (ok) resumeTimer();
     updateUI();
+    startBurnInPrevention();
   }
 
   function deactivate() {
@@ -279,6 +288,7 @@
     }
     resetTimer();
     updateUI();
+    stopBurnInPrevention();
   }
 
   toggleBtn.addEventListener('click', () => {
@@ -298,6 +308,52 @@
       updateUI();
     }
   });
+
+  // --- OLED burn-in prevention ---
+
+  const container = document.querySelector('.container');
+  const footerEl = document.querySelector('footer');
+  const noticeEl = document.querySelector('.notice');
+  const FADE_DELAY = 5000;
+  let fadeTimer = null;
+  let shiftInterval = null;
+
+  function pixelShift() {
+    const x = Math.round((Math.random() - 0.5) * 12);
+    const y = Math.round((Math.random() - 0.5) * 12);
+    container.style.transform = `translate(${x}px, ${y}px)`;
+    footerEl.style.transform = `translateX(${x}px)`;
+  }
+
+  function showStatic() {
+    footerEl.classList.remove('fade-out');
+    noticeEl.classList.remove('fade-out');
+    clearTimeout(fadeTimer);
+    if (isIntentOn) fadeTimer = setTimeout(hideStatic, FADE_DELAY);
+  }
+
+  function hideStatic() {
+    footerEl.classList.add('fade-out');
+    noticeEl.classList.add('fade-out');
+  }
+
+  function startBurnInPrevention() {
+    shiftInterval = setInterval(pixelShift, 60000);
+    showStatic();
+  }
+
+  function stopBurnInPrevention() {
+    clearInterval(shiftInterval);
+    clearTimeout(fadeTimer);
+    footerEl.classList.remove('fade-out');
+    noticeEl.classList.remove('fade-out');
+    container.style.transform = '';
+    footerEl.style.transform = '';
+  }
+
+  ['pointerdown', 'pointermove', 'keydown', 'touchstart'].forEach(evt =>
+    document.addEventListener(evt, showStatic, { passive: true })
+  );
 </script>
 
 </body>
